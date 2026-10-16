@@ -61,6 +61,20 @@ if (!fs.existsSync(BULK_OUTPUT_DIR)) {
   fs.mkdirSync(BULK_OUTPUT_DIR, { recursive: true });
 }
 
+const ALLOWED_FONT_FAMILIES = new Set([
+  "Poppins", "Arial", "Helvetica", "Times New Roman", "Georgia", "serif", "sans-serif"
+]);
+
+// Require a real path separator boundary; startsWith(root) alone also accepts
+// sibling paths such as /uploads-evil/file.
+function isPathInside(parent, candidate) {
+  const relative = path.relative(path.resolve(parent), path.resolve(candidate));
+  return relative !== "" &&
+    relative !== ".." &&
+    !relative.startsWith(".." + path.sep) &&
+    !path.isAbsolute(relative);
+}
+
 
 /* ================= EXPRESS ================= */
 const app = express();
@@ -162,7 +176,7 @@ app.get("/api/bulk/download/:file", (req, res) => {
   const file = req.params.file;
   const safePath = path.resolve(BULK_OUTPUT_DIR, file);
 
-  if (!safePath.startsWith(path.resolve(BULK_OUTPUT_DIR))) {
+  if (!isPathInside(BULK_OUTPUT_DIR, safePath)) {
     return res.status(400).json({ error: "Invalid file path" });
   }
 
@@ -299,6 +313,10 @@ function validateEventInput(p) {
     return "Font color must be valid hex (#RRGGBB)";
   }
 
+  if (p.nameFontFamily && !ALLOWED_FONT_FAMILIES.has(p.nameFontFamily)) {
+    return "Font family is not supported";
+  }
+
   return null;
 }
 
@@ -316,7 +334,7 @@ app.post("/api/events", authMiddleware, async (req, res) => {
     p.templatePath.replace(/^\//, "")
   );
 
-  if (!templateFull.startsWith(path.resolve(UPLOAD_DIR))) {
+  if (!isPathInside(UPLOAD_DIR, templateFull)) {
     return res.status(400).json({ error: "Invalid template path" });
   }
 
@@ -637,7 +655,7 @@ async function generateCertificate(ev, data, sendEmail = true) {
 
   const uploadsRoot = path.resolve(UPLOAD_DIR);
 
-  if (!safeTplPath.startsWith(uploadsRoot)) {
+  if (!isPathInside(uploadsRoot, safeTplPath)) {
     throw new Error("Invalid template path detected");
   }
 
@@ -751,7 +769,7 @@ height="${Math.min(safeBoxH, tplH - 20)}">
   <text
     x="${textX}"
     y="${safeBoxH / 2}"
-    font-family="${ev.nameFontFamily || 'Poppins'}"
+    font-family="${ALLOWED_FONT_FAMILIES.has(ev.nameFontFamily) ? ev.nameFontFamily : "Poppins"}"
     font-size="${fontSize}"
     fill="${ev.nameFontColor || '#000000'}"
     text-anchor="${textAnchor}"
